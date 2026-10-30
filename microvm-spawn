@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# microvm-spawn - create (if needed) a per-VM copy-on-write disk layered on a
+# shared base image, then boot it with microvm.
+#
+# Usage: microvm-spawn vmid
+#
+# Environment:
+#   MICROVM_BASE  base image to layer on      (default: ./base.qcow2)
+#   MICROVM_DIR   directory holding VM dirs   (default: .)
+
+set -eu
+
+prog=${0##*/}
+
+HERE=$(cd "$(dirname -- "$prog")" && pwd -P)
+PATH="$PATH:$HERE" # XXX hack
+
+usage() {
+    echo "usage: $prog vmid" >&2
+    exit 2
+}
+
+die() {
+    echo "$prog: $*" >&2
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+case $1 in
+    -h|--help) usage ;;
+esac
+
+vmid=$1
+shift
+
+# vmid becomes a directory name: letters, digits, dot, underscore, dash only.
+# No slashes, no leading dash or dot (rules out "-x", ".", "..", hidden dirs).
+case $vmid in
+    ''|-*|.*|*[!A-Za-z0-9._-]*)
+        die "invalid vmid '$vmid': use letters, digits, '.', '_' and '-' only," \
+            "and don't start with '-' or '.'"
+        ;;
+esac
+[ ${#vmid} -le 64 ] || die "vmid too long (max 64 characters)"
+
+# Absolute path to the base image, which gets embedded in the overlay.
+: ${MICROVM_BASE:=base.qcow2}
+: ${MICROVM_DIR:=.}
+[ -f "${MICROVM_BASE}" ] || die "base image not found: ${MICROVM_BASE}"
+base_abs=$(cd "$(dirname -- "$MICROVM_BASE")" && pwd -P)/$(basename -- "$MICROVM_BASE")
+
+mkdir -p -- "$vmid"
+disk="${MICROVM_DIR}/${vmid}/user.qcow2"
+if [ ! -e "$disk" ]; then
+    qemu-img create -q -f qcow2 -b "$base_abs" -F qcow2 "$disk"
+fi
+
+microvm "$disk"

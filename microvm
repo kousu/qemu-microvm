@@ -1,0 +1,100 @@
+#!/bin/sh
+#
+# qemu-system-microvm - boot a disk image under QEMU's microvm machine type.
+#
+# Usage: microvm.sh [-k KERNEL] [-i INITRD] DISKIMAGE
+
+set -eu
+
+KERNEL=/boot/vmlinuz-linux
+INITRD=/boot/initramfs-microvm.img
+
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [-k|--kernel KERNEL] [-i|--initrd INITRD] DISKIMAGE
+
+Boot DISKIMAGE as the root disk of a QEMU microvm guest.
+
+Options:
+  -k, --kernel KERNEL   kernel image; intended to be a Linux kernel but some other OSes are compatible   (default: $KERNEL)
+  -i, --initrd INITRD   initramfs      (default: $INITRD)
+  -h, --help            show this help
+
+Console: Ctrl-A h for QEMU menu.
+EOF
+}
+
+die() {
+    echo "${0##*/}: $*" >&2
+    exit 1
+}
+
+DISK=
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        -k|--kernel)
+            [ $# -ge 2 ] || die "$1 requires an argument"
+            KERNEL=$2
+            shift 2
+            ;;
+        --kernel=*)
+            KERNEL=${1#*=}
+            shift
+            ;;
+        -i|--initrd)
+            [ $# -ge 2 ] || die "$1 requires an argument"
+            INITRD=$2
+            shift 2
+            ;;
+        --initrd=*)
+            INITRD=${1#*=}
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            usage >&2
+            die "unknown option: $1"
+            ;;
+        *)
+            [ -z "$DISK" ] || die "more than one disk image given"
+            DISK=$1
+            shift
+            ;;
+    esac
+done
+
+# Anything left after "--" is treated as the disk image.
+if [ $# -gt 0 ]; then
+    [ -z "$DISK" ] && [ $# -eq 1 ] || die "more than one disk image given"
+    DISK=$1
+fi
+
+[ -n "$DISK" ] || { usage >&2; die "missing disk image"; }
+
+[ -r "$KERNEL" ] || die "kernel not readable: $KERNEL"
+[ -r "$INITRD" ] || die "initrd not readable: $INITRD"
+[ -r "$DISK" ]   || die "disk image not readable: $DISK"
+
+exec qemu-system-x86_64 \
+    -M microvm \
+    -enable-kvm -cpu host \
+    -m 1g -smp 2 \
+    -kernel "$KERNEL" \
+    -initrd "$INITRD" \
+    -append "console=ttyS0 root=/dev/vda rw reboot=k panic=1" \
+    -drive "id=rootfs,file=$DISK,if=none" \
+    -device virtio-blk-device,drive=rootfs \
+    -netdev user,id=net0 \
+    -device virtio-net-device,netdev=net0 \
+    -nodefaults -no-user-config -nographic \
+    -chardev stdio,id=char0,mux=on,signal=off \
+    -serial chardev:char0 \
+    -mon chardev=char0,mode=readline
