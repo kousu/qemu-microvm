@@ -84,7 +84,7 @@ fi
 [ -r "$DISK" ]   || die "disk image not readable: $DISK"
 
 exec qemu-system-x86_64 \
-    -M microvm \
+    -M microvm,rtc=on \
     -enable-kvm -cpu host \
     -m 1g -smp 2 \
     -kernel "$KERNEL" \
