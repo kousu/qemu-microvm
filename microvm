@@ -83,6 +83,20 @@ fi
 [ -r "$INITRD" ] || die "initrd not readable: $INITRD"
 [ -r "$DISK" ]   || die "disk image not readable: $DISK"
 
+# Boot time optimizations
+#
+# Some ways to get the absolute fastest boot time.
+#
+# 1. Preload the terminal size (~1 to 2s)
+#
+#   Add these to -append:
+#
+#   systemd.tty.term.console=xterm systemd.tty.columns.console=80
+#   systemd.tty.rows.console=24 systemd.tty.term.ttyS0=xterm
+#   systemd.tty.columns.ttyS0=80 systemd.tty.rows.ttyS0=24
+#
+# 2. Remove 'udev' from mkinitcpio-microvm.conf (~0.5s)
+
 exec qemu-system-x86_64 \
     -M microvm,rtc=on \
     -enable-kvm -cpu host \
